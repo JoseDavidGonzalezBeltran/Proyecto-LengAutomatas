@@ -1,49 +1,21 @@
-// Archivo: Token.java
-
 public class Token {
-
-    // Enum con todos los símbolos terminales de la gramática
-    public enum Type {
-        // Palabras clave (Keywords)
-        IF, ELSE, THEN, WHILE, DO,
-        INT, FLOAT, INPUT, OUTPUT,
-
-        // Literales y Identificadores
-        ID,     // id -> letra(letra|digito)+
-        NUM,    // num -> digito+
-
-        // Puntuación y Operadores
-        SEMICOLON,  // ;
-        LKEY,       // {
-        RKEY,       // }
-        EQ,         // ==
-
-        // Control
-        EOF,        // Fin de archivo
-        ERROR       // Token de error
-    }
-
-    private final Type type;
-    private final String lexeme;
-    
-    public Token(Type type, String lexeme) {
-        this.type = type;
-        this.lexeme = lexeme;
+    public enum Tipo {
+        INT, FLOAT, ID, NUM, IF, THEN, ELSE, WHILE, DO, INPUT, OUTPUT, 
+        EQ_EQ, L_BRACE, R_BRACE, SEMICOLON, EOF, ERROR
     }
     
-    public Type getType() {
-        return type;
-    }
-    
-    public String getLexeme() {
-        return lexeme;
+    public final Tipo tipo;
+    public final String lexema;
+    public final int linea;
+
+    public Token(Tipo tipo, String lexema, int linea) {
+        this.tipo = tipo;
+        this.lexema = lexema;
+        this.linea = linea;
     }
     
     @Override
     public String toString() {
-        return "Token{" +
-               "type=" + type +
-               ", lexeme='" + lexeme + '\'' +
-               '}';
+        return String.format("<%s, %s> (Línea: %d)", tipo, lexema, linea);
     }
 }

@@ -1,230 +1,193 @@
-// Archivo: Parser.java
-
-import java.util.ArrayList;
-import java.util.List;
-
-// Importa todas las clases de nodos del AST
-import AST.*;
-
 public class Parser {
     private final Scanner scanner;
     private Token currentToken;
 
     public Parser(Scanner scanner) {
         this.scanner = scanner;
-        this.currentToken = scanner.getNextToken(); // Carga el primer token
     }
-
-    // --- Métodos de Control ---
-
-    /**
-     * Consume el token actual si es del tipo esperado.
-     * Si no, lanza un error de sintaxis.
-     */
-    private Token match(Token.Type expectedType) {
-        if (currentToken.getType() == expectedType) {
-            Token consumedToken = currentToken;
-            currentToken = scanner.getNextToken();
-            
-            // Detenerse si el scanner encontró un error léxico
-            if (currentToken.getType() == Token.Type.ERROR) {
-                error("Error Léxico encontrado: " + currentToken.getLexeme());
-            }
-            return consumedToken;
-        }
-        error("Error de Sintaxis: Se esperaba " + expectedType + 
-              " pero se encontró " + currentToken.getType() + 
-              " ('" + currentToken.getLexeme() + "')");
-        return null; // Nunca se alcanza
-    }
-
-    /**
-     * Reporta un error de sintaxis y detiene la compilación.
-     */
+    
+    // --- Manejo de Errores y Tokens ---
+    
     private void error(String message) {
-        System.err.println(message);
-        // Lanzamos una excepción para parar la compilación (como pide el proyecto)
-        throw new RuntimeException(message);
+        System.err.println("❌ Error de Sintaxis en línea " + currentToken.linea + " (" + currentToken.lexema + "): " + message);
+        // **Parar la compilación después de un error de sintaxis**
+        System.exit(1); 
     }
 
-    // --- Método de Arranque ---
-
-    /**
-     * Inicia el análisis sintáctico.
-     * @return El nodo raíz del AST (ProgramNode).
-     */
-    public ProgramNode parse() {
-        try {
-            ProgramNode program = P(); // Inicia en el símbolo P
-            match(Token.Type.EOF);     // Verifica el fin de archivo
-            System.out.println("Análisis Sintáctico Exitoso.");
-            return program;
-        } catch (RuntimeException e) {
-            System.err.println("Compilación fallida: " + e.getMessage());
-            return null; // Devuelve null si falló
+    private void match(Token.Tipo expectedType) {
+        if (currentToken.tipo == Token.Tipo.ERROR) {
+             System.err.println("❌ Deteniendo por Error Léxico previo.");
+             System.exit(1);
         }
-    }
-
-    // --- Métodos del Parser (Descenso Recursivo) ---
-
-    /** P -> D S */
-    private ProgramNode P() {
-        List<DeclarationNode> declarations = D();
-        Statement statement = S();
-        return new ProgramNode(declarations, statement);
-    }
-
-    /**
-     * D -> (int | float) id ; D
-     * D -> ε (cadena nula)
-     */
-    private List<DeclarationNode> D() {
-        List<DeclarationNode> declarations = new ArrayList<>();
         
-        // D -> ε (cadena nula). Miramos si el token actual NO es int o float.
-        if (currentToken.getType() != Token.Type.INT && 
-            currentToken.getType() != Token.Type.FLOAT) {
-            return declarations; // Devuelve lista vacía
-        }
-
-        // D -> (int | float) id ; D
-        Token type = currentToken;
-        if (type.getType() == Token.Type.INT) {
-            match(Token.Type.INT);
+        if (currentToken.tipo.equals(expectedType)) {
+            System.out.println("-> Consumido: " + currentToken);
+            currentToken = scanner.nextToken();
         } else {
-            match(Token.Type.FLOAT);
+            error("Se esperaba '" + expectedType + "' pero se encontró '" + currentToken.tipo + "'");
         }
-        
-        Token id = match(Token.Type.ID);
-        match(Token.Type.SEMICOLON);
-        
-        declarations.add(new DeclarationNode(type, id));
-        
-        // Llamada recursiva para el resto de D
-        declarations.addAll(D());
-        
-        return declarations;
+    }
+    
+    // --- Método de inicio ---
+    
+    public ASTNode parse() {
+        System.out.println("\n--- Iniciando Compilación ---");
+        currentToken = scanner.nextToken(); // Obtener el primer token
+        ASTNode root = P();
+
+        if (currentToken.tipo.equals(Token.Tipo.EOF)) {
+            System.out.println("✅ Análisis sintáctico completado con éxito.");
+            return root;
+        } else {
+            error("Se esperaban declaraciones/sentencias adicionales o <eof>.");
+            return null;
+        }
+    }
+    
+    // --- Funciones del Parser Descendente Recursivo ---
+
+    // P -> D S <eof>
+    private ASTNode P() {
+        ASTNode pNode = new ASTNode("Program");
+        System.out.println("Analizando P -> D S <eof>");
+        pNode.children.add(D());
+        pNode.children.add(S());
+        match(Token.Tipo.EOF);
+        return pNode;
     }
 
-    /**
-     * S -> if E then S else S
-     * S -> while E do S
-     * S -> { S L }
-     * S -> input E
-     * S -> output E
-     */
-    private Statement S() {
-        switch (currentToken.getType()) {
+    // D -> (int | float) id ; D | ε
+    private ASTNode D() {
+        // PRIMEROS(D): {INT, FLOAT}
+        if (currentToken.tipo == Token.Tipo.INT || currentToken.tipo == Token.Tipo.FLOAT) {
+            ASTNode dNode = new ASTNode("Declaration");
+            
+            dNode.children.add(new ASTNode("Type", currentToken.lexema));
+            match(currentToken.tipo); // Consumir 'int' o 'float'
+
+            dNode.children.add(new ASTNode("Id", currentToken.lexema));
+            match(Token.Tipo.ID); // Consumir 'id'
+
+            match(Token.Tipo.SEMICOLON); 
+            dNode.children.add(D()); // Llamada recursiva
+            return dNode;
+        } else {
+            // D -> ε (cadena nula). Se llega aquí si el lookahead está en SIGUIENTES(D): {IF, WHILE, L_BRACE, INPUT, OUTPUT, EOF}
+            return new ASTNode("EmptyDeclaration");
+        }
+    }
+
+    // S à if E then S else S | while E do S | { S L | input E | output E
+    private ASTNode S() {
+        ASTNode sNode = new ASTNode("Statement");
+        
+        switch (currentToken.tipo) {
             case IF:
-                match(Token.Type.IF);
-                Expression ifCond = E();
-                match(Token.Type.THEN);
-                Statement thenBranch = S();
-                match(Token.Type.ELSE);
-                Statement elseBranch = S();
-                return new IfNode(ifCond, thenBranch, elseBranch);
-
+                sNode.type = "IfStatement";
+                match(Token.Tipo.IF);
+                sNode.children.add(E()); // Condición
+                match(Token.Tipo.THEN);
+                sNode.children.add(S()); // Cuerpo THEN
+                match(Token.Tipo.ELSE);
+                sNode.children.add(S()); // Cuerpo ELSE
+                break;
             case WHILE:
-                match(Token.Type.WHILE);
-                Expression whileCond = E();
-                match(Token.Type.DO);
-                Statement doBranch = S();
-                return new WhileNode(whileCond, doBranch);
-
-            case LKEY: // {
-                match(Token.Type.LKEY);
-                Statement firstStatement = S();
-                List<Statement> followingStatements = L(); // L consumirá el RKEY
-                return new BlockNode(firstStatement, followingStatements);
-
+                sNode.type = "WhileStatement";
+                match(Token.Tipo.WHILE);
+                sNode.children.add(E()); // Condición
+                match(Token.Tipo.DO);
+                sNode.children.add(S()); // Cuerpo DO
+                break;
+            case L_BRACE:
+                sNode.type = "BlockStatement";
+                match(Token.Tipo.L_BRACE);
+                sNode.children.add(S()); // Primer statement del bloque
+                sNode.children.add(L()); // Resto del bloque
+                break;
             case INPUT:
-                match(Token.Type.INPUT);
-                Expression inputExpr = E();
-                return new InputNode(inputExpr);
-
+                sNode.type = "InputStatement";
+                match(Token.Tipo.INPUT);
+                sNode.children.add(E()); // Expresión/Variable
+                match(Token.Tipo.SEMICOLON); 
+                break;
             case OUTPUT:
-                match(Token.Type.OUTPUT);
-                Expression outputExpr = E();
-                return new OutputNode(outputExpr);
-
+                sNode.type = "OutputStatement";
+                match(Token.Tipo.OUTPUT);
+                sNode.children.add(E()); // Expresión
+                match(Token.Tipo.SEMICOLON); 
+                break;
             default:
-                error("Se esperaba una sentencia (if, while, {, input, output) " +
-                      "pero se encontró " + currentToken.getType());
-                return null; // Nunca se alcanza
+                error("Sentencia inválida. Se esperaba IF, WHILE, '{', INPUT, u OUTPUT.");
         }
+        return sNode;
     }
 
-    /**
-     * L -> ; S L
-     * L -> } (Esta regla consume el '}')
-     */
-    private List<Statement> L() {
-        List<Statement> statements = new ArrayList<>();
-        
-        if (currentToken.getType() == Token.Type.SEMICOLON) {
+    // L à } | ; S L
+    private ASTNode L() {
+        // PRIMEROS(L): { R_BRACE, SEMICOLON }
+        if (currentToken.tipo == Token.Tipo.R_BRACE) {
+            // L -> }
+            match(Token.Tipo.R_BRACE);
+            return new ASTNode("EndBlock");
+        } else if (currentToken.tipo == Token.Tipo.SEMICOLON) {
             // L -> ; S L
-            match(Token.Type.SEMICOLON);
-            statements.add(S());
-            statements.addAll(L()); // Llamada recursiva
-            
-        } else if (currentToken.getType() == Token.Type.RKEY) {
-            // L -> } (Caso base, consume '}' y devuelve lista vacía)
-            match(Token.Type.RKEY);
-            
+            ASTNode lNode = new ASTNode("StatementList");
+            match(Token.Tipo.SEMICOLON);
+            lNode.children.add(S());
+            lNode.children.add(L());
+            return lNode;
         } else {
-            error("Se esperaba ';' o '}' dentro del bloque, pero se encontró " + 
-                  currentToken.getType());
+             error("Se esperaba ';' o '}' dentro del bloque de sentencias.");
+             return null;
         }
-        
-        return statements;
     }
-
-    /**
-     * E -> num == num
-     * E -> id == id
-     * E -> num
-     * E -> id
-     */
-    private Expression E() {
-        Expression left;
-        Token leftToken = currentToken;
-
-        // Reconocer el primer operando (num o id)
-        if (leftToken.getType() == Token.Type.NUM) {
-            match(Token.Type.NUM);
-            left = new NumNode(leftToken);
-        } else if (leftToken.getType() == Token.Type.ID) {
-            match(Token.Type.ID);
-            left = new IdNode(leftToken);
+    
+    // E -> num E_num' | id E_id'
+    private ASTNode E() {
+        ASTNode eNode = new ASTNode("Expression");
+        if (currentToken.tipo == Token.Tipo.NUM) {
+            eNode.children.add(new ASTNode("Num", currentToken.lexema));
+            match(Token.Tipo.NUM);
+            eNode.children.add(E_num_prime());
+        } else if (currentToken.tipo == Token.Tipo.ID) {
+            eNode.children.add(new ASTNode("Id", currentToken.lexema));
+            match(Token.Tipo.ID);
+            eNode.children.add(E_id_prime());
         } else {
-            error("Se esperaba una expresión (NUM o ID) pero se encontró " + 
-                  currentToken.getType());
-            return null; // Nunca se alcanza
+            error("Expresión inválida. Se esperaba un número (num) o un identificador (id).");
         }
-
-        // Verificar si es una comparación (num == num o id == id)
-        if (currentToken.getType() == Token.Type.EQ) {
-            Token op = match(Token.Type.EQ);
-            
-            Expression right;
-            Token rightToken = currentToken;
-
-            // La gramática es estricta: num == num y id == id
-            if (rightToken.getType() == Token.Type.NUM && left instanceof NumNode) {
-                match(Token.Type.NUM);
-                right = new NumNode(rightToken);
-            } else if (rightToken.getType() == Token.Type.ID && left instanceof IdNode) {
-                match(Token.Type.ID);
-                right = new IdNode(rightToken);
-            } else {
-                error("Error de tipo en la comparación: Solo se permite num == num o id == id.");
-                return null; // Nunca se alcanza
-            }
-            
-            return new ComparisonNode(left, op, right);
-        }
-
-        // Si no fue comparación, es E -> num o E -> id
-        return left;
+        return eNode;
     }
+    
+    // E_num' -> == num | ε
+    private ASTNode E_num_prime() {
+        if (currentToken.tipo == Token.Tipo.EQ_EQ) {
+            ASTNode primeNode = new ASTNode("Comparison");
+            match(Token.Tipo.EQ_EQ);
+            primeNode.children.add(new ASTNode("Num", currentToken.lexema));
+            match(Token.Tipo.NUM);
+            return primeNode;
+        } else {
+            // E_num' -> ε. Se llega aquí si el lookahead está en SIGUIENTES(E): { THEN, DO, SEMICOLON, R_BRACE }
+            return new ASTNode("Empty");
+        }
+    }
+    
+    // E_id' -> == id | ε
+    private ASTNode E_id_prime() {
+        if (currentToken.tipo == Token.Tipo.EQ_EQ) {
+            ASTNode primeNode = new ASTNode("Comparison");
+            match(Token.Tipo.EQ_EQ);
+            primeNode.children.add(new ASTNode("Id", currentToken.lexema));
+            match(Token.Tipo.ID);
+            return primeNode;
+        } else {
+            // E_id' -> ε. Se llega aquí si el lookahead está en SIGUIENTES(E): { THEN, DO, SEMICOLON, R_BRACE }
+            return new ASTNode("Empty");
+        }
+    }
+    // NOTA: Se necesita ajustar la gramática para que 'input' y 'output' no requieran ';'
+    // S àinput E ;
+    // S àoutput E ;
+    // En la implementación anterior se asume que si requieren ';' al final.
 }

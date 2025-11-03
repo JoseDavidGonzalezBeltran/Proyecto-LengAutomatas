@@ -1,178 +1,92 @@
-// Archivo: Scanner.java
-
 import java.util.HashMap;
 import java.util.Map;
 
 public class Scanner {
-    private final String source;
-    private int position = 0;
-    private int line = 1;
+    private final String input;
+    private int pos = 0;
+    private int linea = 1;
 
-    // Tabla de Palabras Clave
-    private static final Map<String, Token.Type> keywords = new HashMap<>();
-
+    private static final Map<String, Token.Tipo> PALABRAS_CLAVE;
     static {
-        keywords.put("if", Token.Type.IF);
-        keywords.put("else", Token.Type.ELSE);
-        keywords.put("then", Token.Type.THEN);
-        keywords.put("while", Token.Type.WHILE);
-        keywords.put("do", Token.Type.DO);
-        keywords.put("int", Token.Type.INT);
-        keywords.put("float", Token.Type.FLOAT);
-        keywords.put("input", Token.Type.INPUT);
-        keywords.put("output", Token.Type.OUTPUT);
+        PALABRAS_CLAVE = new HashMap<>();
+        PALABRAS_CLAVE.put("int", Token.Tipo.INT);
+        PALABRAS_CLAVE.put("float", Token.Tipo.FLOAT);
+        PALABRAS_CLAVE.put("if", Token.Tipo.IF);
+        PALABRAS_CLAVE.put("then", Token.Tipo.THEN);
+        PALABRAS_CLAVE.put("else", Token.Tipo.ELSE);
+        PALABRAS_CLAVE.put("while", Token.Tipo.WHILE);
+        PALABRAS_CLAVE.put("do", Token.Tipo.DO);
+        PALABRAS_CLAVE.put("input", Token.Tipo.INPUT);
+        PALABRAS_CLAVE.put("output", Token.Tipo.OUTPUT);
     }
 
-    public Scanner(String source) {
-        this.source = source + "\n"; // Facilita el manejo del EOF
+    public Scanner(String input) {
+        this.input = input;
     }
 
-    // --- Métodos Auxiliares de Lectura ---
-
-    private boolean isAtEnd() {
-        return position >= source.length();
-    }
-
-    private char advance() {
-        return source.charAt(position++);
-    }
-
-    private char peek() {
-        if (isAtEnd()) return '\0';
-        return source.charAt(position);
-    }
-
-    private char peekNext() {
-        if (position + 1 >= source.length()) return '\0';
-        return source.charAt(position + 1);
-    }
-
-    private void skipWhitespaceAndComments() {
-        while (!isAtEnd()) {
-            char c = peek();
-            switch (c) {
-                case ' ':
-                case '\r':
-                case '\t':
-                    advance();
-                    break;
-                case '\n':
-                    line++;
-                    advance();
-                    break;
-                case '/':
-                    if (peekNext() == '/') { // Comentario de línea
-                        while (peek() != '\n' && !isAtEnd()) {
-                            advance();
-                        }
-                    } else {
-                        return; // No es comentario, es otro token (división, no soportada)
-                    }
-                    break;
-                default:
-                    return; // Carácter significativo
-            }
+    // --- Auxiliares ---
+    private char peek() { return pos < input.length() ? input.charAt(pos) : '\0'; }
+    private void advance() { pos++; }
+    private void skipWhitespace() {
+        while (pos < input.length() && (Character.isWhitespace(peek()))) {
+            if (peek() == '\n') linea++;
+            advance();
         }
     }
+    private boolean isLetter(char c) { return Character.isLetter(c); }
+    private boolean isDigit(char c) { return Character.isDigit(c); }
 
-    // --- Métodos de Reconocimiento de Tokens ---
+    // --- Método principal del Scanner ---
+    public Token nextToken() {
+        skipWhitespace();
 
-    /**
-     * Reconoce: id -> letra (letra | digito)+
-     * IMPORTANTE: La gramática exige que un ID tenga 2 o más caracteres.
-     */
-    private Token handleIdentifier(char firstChar) {
-        StringBuilder lexemeBuilder = new StringBuilder();
-        lexemeBuilder.append(firstChar);
-
-        // La regla (letra | digito)+ exige al menos UN carácter más.
-        if (!Character.isLetterOrDigit(peek())) {
-            String errorMsg = "ID mal formado '" + firstChar + "' en línea " + line + ". Debe tener al menos 2 caracteres.";
-            System.err.println(errorMsg);
-            return new Token(Token.Type.ERROR, errorMsg);
+        if (pos >= input.length()) {
+            return new Token(Token.Tipo.EOF, "EOF", linea);
         }
 
-        // Consumir (letra | digito)+
-        while (Character.isLetterOrDigit(peek())) {
-            lexemeBuilder.append(advance());
-        }
-
-        String lexeme = lexemeBuilder.toString();
-        Token.Type type = keywords.get(lexeme); // Es palabra clave?
+        int start = pos;
+        char c = peek();
         
-        if (type == null) {
-            type = Token.Type.ID; // No, es un ID
-        }
-        
-        return new Token(type, lexeme);
-    }
-
-    /**
-     * Reconoce: num -> digito+
-     * IMPORTANTE: La gramática solo permite enteros, no flotantes.
-     */
-    private Token handleNumber(char firstChar) {
-        StringBuilder lexemeBuilder = new StringBuilder();
-        lexemeBuilder.append(firstChar);
-
-        while (Character.isDigit(peek())) {
-            lexemeBuilder.append(advance());
-        }
-
-        // Si después del número hay una letra (ej. "123abc")
-        if (Character.isLetter(peek())) {
-            String errorMsg = "Número mal formado '" + lexemeBuilder.toString() + "' en línea " + line;
-            System.err.println(errorMsg);
-            return new Token(Token.Type.ERROR, errorMsg);
-        }
-
-        return new Token(Token.Type.NUM, lexemeBuilder.toString());
-    }
-
-    // --- Método Principal ---
-
-    public Token getNextToken() {
-        skipWhitespaceAndComments();
-
-        if (isAtEnd()) {
-            return new Token(Token.Type.EOF, "");
-        }
-
-        char c = advance();
-        String lexeme = String.valueOf(c);
-
-        // 1. Operadores y Puntuación
+        // Operadores y símbolos
         switch (c) {
-            case ';': return new Token(Token.Type.SEMICOLON, lexeme);
-            case '{': return new Token(Token.Type.LKEY, lexeme);
-            case '}': return new Token(Token.Type.RKEY, lexeme);
-            case '=':
+            case ';': advance(); return new Token(Token.Tipo.SEMICOLON, ";", linea);
+            case '{': advance(); return new Token(Token.Tipo.L_BRACE, "{", linea);
+            case '}': advance(); return new Token(Token.Tipo.R_BRACE, "}", linea);
+            case '=': 
+                advance();
                 if (peek() == '=') {
-                    advance(); // Consumir el segundo '='
-                    return new Token(Token.Type.EQ, "==");
+                    advance();
+                    return new Token(Token.Tipo.EQ_EQ, "==", linea);
                 } else {
-                    // La gramática no soporta asignación '=', solo '=='
-                    String errorMsg = "Símbolo '=' inesperado. ¿Quisiste decir '=='? Línea " + line;
-                    System.err.println(errorMsg);
-                    return new Token(Token.Type.ERROR, errorMsg);
+                    // Error léxico si se encuentra solo un '=', ya que no está definido en la gramática
+                    System.err.println("❌ Error Léxico en línea " + linea + ": Símbolo '=' no reconocido.");
+                    return new Token(Token.Tipo.ERROR, "=", linea);
                 }
-            
-            // La gramática no incluye '(', ')', '+', '-', etc.
         }
 
-        // 2. Identificadores y Palabras Clave
-        if (Character.isLetter(c)) {
-            return handleIdentifier(c);
-        }
-        
-        // 3. Números
-        if (Character.isDigit(c)) {
-            return handleNumber(c);
+        // Identificadores y Palabras Clave (id à letra (letra | digito) +)
+        if (isLetter(c)) {
+            while (pos < input.length() && (isLetter(peek()) || isDigit(peek()))) {
+                advance();
+            }
+            String lexema = input.substring(start, pos);
+            Token.Tipo tipo = PALABRAS_CLAVE.getOrDefault(lexema, Token.Tipo.ID);
+            return new Token(tipo, lexema, linea);
         }
 
-        // 4. Carácter no reconocido
-        String errorMsg = "Carácter inesperado '" + c + "' en línea " + line;
-        System.err.println(errorMsg);
-        return new Token(Token.Type.ERROR, errorMsg);
+        // Números (num à digito +)
+        if (isDigit(c)) {
+            while (pos < input.length() && isDigit(peek())) {
+                advance();
+            }
+            String lexema = input.substring(start, pos);
+            return new Token(Token.Tipo.NUM, lexema, linea);
+        }
+
+        // Error léxico: Carácter no reconocido
+        System.err.println("❌ Error Léxico en línea " + linea + ": Carácter no reconocido '" + c + "'");
+        advance();
+        // **Parar compilación o retornar ERROR para manejo en el Parser**
+        return new Token(Token.Tipo.ERROR, String.valueOf(c), linea); 
     }
 }
