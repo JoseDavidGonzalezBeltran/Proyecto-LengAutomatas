@@ -1,14 +1,7 @@
 public class Main {
     public static void main(String[] args) {
         String codigoFuente = 
-            "int x; float y; \n" +
-            "if 10 == 10 then \n" +
-            "  output x; \n" +
-            "else \n" +
-            "  { \n" +
-            "    while y do input y; \n" +
-            "  }";
-
+            "output a;";
         // 1. Crear Scanner
         Scanner scanner = new Scanner(codigoFuente);
         
